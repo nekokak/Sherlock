@@ -41,7 +41,7 @@ sub lock_key_gen {
 sub lock {
     my ($self, $lock_key, $expire) = @_;
 
-    $self->dbh->do('SELECT GET_LOCK(?,?)', {}, $self->lock_key_gen($lock_key), $expire);
+    $self->dbh->do('SELECT GET_LOCK(?,?)', {}, $self->lock_key_gen($lock_key), ($expire||$self->{expire}));
 }
 
 sub release {

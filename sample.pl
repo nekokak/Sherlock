@@ -4,26 +4,23 @@ use warnings;
 use Sherlock;
 
 my $locker = Sherlock->new(
-    connect_option => +{
-        servers => ['127.0.0.1:11211'],
-    },
+    {
+        connect_option => +{
+            dsn      => "dbi:mysql:test",
+            username => 'test',
+            password => '',
+        },
+    }
 );
 
-$locker->lock('hoge');
+$locker->callback(
+    hoge => +{
+        code => sub {
+            warn 'get lock!';
+            sleep (5);
+            warn 'releaseeeeeee!';
+        },
+    }, 10,
+);
 
-warn 'do hoge lock!';
-
-if ($locker->locked('hoge')) {
-    warn 'Yes locked!';
-} else {
-    warn 'No locked...';
-}
-
-$locker->release('hoge');
-
-if ($locker->locked('hoge')) {
-    warn 'Yes locked...';
-} else {
-    warn 'No locked!';
-}
 

@@ -4,42 +4,64 @@ use warnings;
 
 our $VERSION = '0.01';
 
-use Cache::Memcached::Fast;
+use DBI;
 
 my $LOCK_KEY = 'sherlock_%s';
 my $EXPIRE   = 60*60*24; # 24H lock
 
 sub new {
-    my ($class, %args) = @_;
-    
-    return bless {
-        lock_key => $args{lock_key} || $LOCK_KEY,
-        expire   => $args{expire}   || $EXPIRE,
-        memd     => Cache::Memcached::Fast->new($args{connect_option}),
+    my ($class, $args) = @_;
+
+    my $self = bless {
+        lock_key => $args->{lock_key} || $LOCK_KEY,
+        expire   => $args->{expire}   || $EXPIRE,
+        dbh      => $args->{dbh}      || '',
+        connect_option => $args->{connect_option},
     }, $class;
+
+    $self->_connect;
+    $self;
 }
 
-sub memd { $_[0]->{memd} }
+sub dbh { $_[0]->{dbh} }
+sub _connect {
+    my $self = shift;
+    $self->{dbh} ||= DBI->connect(
+        $self->{connect_option}->{dsn},
+        $self->{connect_option}->{username},
+        $self->{connect_option}->{password},
+    ) or die 'cant connect';
+}
 
 sub lock_key_gen {
     my ($self, $lock_key) = @_;
     sprintf($self->{lock_key}, $lock_key);
 }
 
-# FIXME: use gets/cas
 sub lock {
     my ($self, $lock_key, $expire) = @_;
-    $self->memd->set($self->lock_key_gen($lock_key), 1, ($expire||$self->{expire}));
+
+    $self->dbh->do('SELECT GET_LOCK(?,?)', {}, $self->lock_key_gen($lock_key), $expire);
 }
 
 sub release {
     my ($self, $lock_key) = @_;
-    $self->memd->delete($self->lock_key_gen($lock_key));
+    $self->dbh->do('SELECT RELEASE_LOCK(?)', {}, $self->lock_key_gen($lock_key));
 }
 
-sub locked {
-    my ($self, $lock_key) = @_;
-    $self->memd->get($self->lock_key_gen($lock_key));
+sub callback {
+    my ($self, $lock_key, $args, $expire) = @_;
+
+    while (1) {
+        if ($self->lock($lock_key, $expire)) {
+            $args->{code}->();
+            $self->release($lock_key);
+        }
+        if (--$args->{try_cnt} <= 0) {
+            last;
+        }
+        sleep(1);
+    }
 }
 
 =head1 NAME
@@ -54,26 +76,24 @@ Sherlock  - eazy shared lock system
   use Sherlock;
 
   my $locker = Sherlock->new(
-      connect_option => +{
-          servers => ['127.0.0.1:11211'],
-      },
+      {
+          connect_option => +{
+              dsn      => "dbi:mysql:test",
+              username => 'test',
+              password => '',
+          },
+      }
   );
+  # or
+  my $locker = Sherlock->new({dbh => $dbh});
 
-  $locker->lock('hoge');
-
-  if ($locker->locked('hoge')) {
-      warn 'Yes locked!';
-  } else {
-      warn 'No locked...';
-  }
-
-  $locker->release('hoge');
-
-  if ($locker->locked('hoge')) {
-      warn 'Yes locked...';
-  } else {
-      warn 'No locked!';
-  }
+  $locker->callback(
+      hoge => +{
+          code => sub {
+              # do some process...
+          },
+      }, 10,
+  );
 
 =head1 DESCRIPTION
 

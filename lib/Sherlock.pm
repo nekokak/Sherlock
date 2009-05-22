@@ -26,6 +26,7 @@ sub lock_key_gen {
     sprintf($self->{lock_key}, $lock_key);
 }
 
+# FIXME: use gets/cas
 sub lock {
     my ($self, $lock_key, $expire) = @_;
     $self->memd->set($self->lock_key_gen($lock_key), 1, ($expire||$self->{expire}));

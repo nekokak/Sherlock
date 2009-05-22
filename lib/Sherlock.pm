@@ -6,7 +6,7 @@ our $VERSION = '0.01';
 
 use Cache::Memcached::Fast;
 
-my $LOCK_KEY = 'click_log_table_locki_%s';
+my $LOCK_KEY = 'sherlock_%s';
 my $EXPIRE   = 60*60*24; # 24H lock
 
 sub new {
